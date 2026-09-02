@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign Form</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root {
+    --primary: #2E6B4F; --primary-dark: #204E3A; --ink: #17241D; --muted: #5C6B62;
+  }
+  body { font-family: Arial, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; color: var(--ink); }
+  .brand-mini { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .brand-mini img { width: 36px; height: 36px; object-fit: contain; }
+  .brand-mini span { font-size: 13px; color: var(--muted); font-weight: 600; }
+  h1 { font-size: 20px; }
+  .preview-link { display: inline-block; margin: 12px 0 20px; padding: 10px 16px; background: #eef3ff; border-radius: 6px; text-decoration: none; color: #1a4fd6; font-weight: bold; }
+  label { display: block; margin-top: 16px; font-weight: bold; font-size: 14px; }
+  input[type=text] { width: 100%; padding: 8px; font-size: 15px; box-sizing: border-box; margin-top: 4px; }
+  canvas { border: 2px dashed #999; border-radius: 6px; touch-action: none; margin-top: 6px; width: 100%; max-width: 500px; height: 150px; background: #fff; display: block; }
+  .btn-row { margin-top: 10px; }
+  button { padding: 10px 18px; font-size: 14px; border-radius: 6px; border: none; cursor: pointer; }
+  #clearBtn { background: #eee; margin-right: 8px; }
+  #submitBtn { background: var(--primary); color: white; font-weight: bold; }
+  #submitBtn:disabled { background: #aaa; cursor: not-allowed; }
+  #status { margin-top: 14px; font-size: 14px; color: var(--muted); }
+  #thankyou { display: none; padding: 30px 24px; background: #eef7f1; border-radius: 12px; margin-top: 20px; line-height: 1.6; }
+  #thankyou h2 { margin-top: 0; }
+  #loading { padding: 40px 0; color: var(--muted); }
+  a.back-link { color: var(--primary-dark); font-weight: 600; text-decoration: none; }
+  .sig-tabs { display: flex; gap: 8px; margin-top: 6px; }
+  .sig-tab { padding: 7px 14px; font-size: 13px; border-radius: 6px; border: 1px solid #ccc; background: #f6f6f6; cursor: pointer; }
+  .sig-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+  #uploadPane { margin-top: 10px; }
+  #uploadPreviewWrap { margin-top: 10px; display: flex; align-items: center; gap: 12px; }
+  #uploadPreview { max-width: 260px; max-height: 110px; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
+</style>
+</head>
+<body>
+  <div id="loading">Loading form…</div>
+
+  <div id="formArea" style="display:none">
+    <div class="brand-mini">
+      <img src="logo.jpg" alt="YAHSHUA Outsourcing Worldwide, Inc. logo">
+      <span>YAHSHUA Outsourcing Worldwide, Inc.</span>
+    </div>
+    <h1 id="formTitle"></h1>
+    <p>Please read the full document before signing. Your signature will be placed directly onto this exact file — nothing is retyped or reformatted.</p>
+    <a class="preview-link" id="previewLink" href="#" target="_blank">📄 Open form to review</a>
+    <a class="preview-link" id="downloadBlankLink" href="#" download style="background:#f2f2f2;color:#444;">⬇️ Download blank PDF to sign manually</a>
+
+    <label for="fullName">Full legal name</label>
+    <input type="text" id="fullName" placeholder="Juan Dela Cruz" autocomplete="name">
+
+    <label>Signature</label>
+    <div class="sig-tabs">
+      <button type="button" id="drawTab" class="sig-tab active">Draw</button>
+      <button type="button" id="uploadTab" class="sig-tab">Upload image</button>
+    </div>
+
+    <div id="drawPane">
+      <canvas id="pad" width="500" height="150"></canvas>
+      <div class="btn-row">
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+    </div>
+
+    <div id="uploadPane" style="display:none">
+      <input type="file" id="sigFile" accept="image/png,image/jpeg">
+      <div id="uploadPreviewWrap" style="display:none">
+        <img id="uploadPreview" alt="Uploaded signature preview">
+        <button id="clearUploadBtn" type="button">Remove</button>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button id="submitBtn" type="button">Sign &amp; Download</button>
+    </div>
+    <div id="status"></div>
+
+    <div id="thankyou">
+      <h2>✅ Signed!</h2>
+      <p id="afterInstructions"></p>
+      <p><a class="back-link" href="index.html">&larr; Back to all forms</a></p>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    var params = new URLSearchParams(window.location.search);
+    var FORM_ID = params.get('form');
+    var CONFIG = FORM_ID ? FORM_LIBRARY[FORM_ID] : null;
+    var PDF_BYTES = null;
+
+    if (!CONFIG) {
+      document.getElementById('loading').textContent = 'Sorry, this form link is invalid. Please go back and choose a form.';
+    } else {
+      fetch(CONFIG.pdfFile)
+        .then(function(r) {
+          if (!r.ok) throw new Error('PDF not found at ' + CONFIG.pdfFile);
+          return r.arrayBuffer();
+        })
+        .then(function(buf) {
+          PDF_BYTES = buf;
+          document.getElementById('formTitle').textContent = CONFIG.formName;
+          document.getElementById('previewLink').href = CONFIG.pdfFile;
+          document.getElementById('downloadBlankLink').href = CONFIG.pdfFile;
+          document.getElementById('afterInstructions').innerHTML = AFTER_SIGNING_INSTRUCTIONS;
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('formArea').style.display = 'block';
+        })
+        .catch(function(err) {
+          document.getElementById('loading').textContent = 'Could not load this form (' + err.message + '). Please contact HR.';
+        });
+    }
+
+    // ---- Signature pad ----
+    var canvas = document.getElementById('pad');
+    var ctx = canvas.getContext('2d');
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#111';
+    var drawing = false, hasSignature = false;
+
+    function pos(e) {
+      var rect = canvas.getBoundingClientRect();
+      var scaleX = canvas.width / rect.width;
+      var scaleY = canvas.height / rect.height;
+      var p = e.touches ? e.touches[0] : e;
+      return { x: (p.clientX - rect.left) * scaleX, y: (p.clientY - rect.top) * scaleY };
+    }
+    function start(e) { drawing = true; hasSignature = true; var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); }
+    function move(e) { if (!drawing) return; var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); }
+    function end() { drawing = false; }
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', end);
+
+    document.getElementById('clearBtn').onclick = function() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasSignature = false;
+    };
+
+    // ---- Draw vs Upload toggle ----
+    var sigMode = 'draw';
+    var uploadedDataUrl = null;
+    var drawTab = document.getElementById('drawTab');
+    var uploadTab = document.getElementById('uploadTab');
+    var drawPane = document.getElementById('drawPane');
+    var uploadPane = document.getElementById('uploadPane');
+
+    drawTab.onclick = function() {
+      sigMode = 'draw';
+      drawTab.classList.add('active');
+      uploadTab.classList.remove('active');
+      drawPane.style.display = 'block';
+      uploadPane.style.display = 'none';
+    };
+    uploadTab.onclick = function() {
+      sigMode = 'upload';
+      uploadTab.classList.add('active');
+      drawTab.classList.remove('active');
+      uploadPane.style.display = 'block';
+      drawPane.style.display = 'none';
+    };
+
+    document.getElementById('sigFile').onchange = function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var img = new Image();
+        img.onload = function() {
+          // Normalize onto a fixed-size canvas so the rest of the
+          // pipeline always deals with the same kind of PNG data,
+          // regardless of what the user uploaded.
+          var norm = document.createElement('canvas');
+          norm.width = 500;
+          norm.height = 150;
+          var nctx = norm.getContext('2d');
+          nctx.clearRect(0, 0, 500, 150);
+          var scale = Math.min(500 / img.width, 150 / img.height);
+          var w = img.width * scale;
+          var h = img.height * scale;
+          nctx.drawImage(img, (500 - w) / 2, (150 - h) / 2, w, h);
+          uploadedDataUrl = norm.toDataURL('image/png');
+          document.getElementById('uploadPreview').src = uploadedDataUrl;
+          document.getElementById('uploadPreviewWrap').style.display = 'flex';
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    document.getElementById('clearUploadBtn').onclick = function() {
+      uploadedDataUrl = null;
+      document.getElementById('sigFile').value = '';
+      document.getElementById('uploadPreviewWrap').style.display = 'none';
+    };
+
+    // ---- Stamping, done entirely in the browser ----
+    async function buildSignedPdf(fullName, dateStr, signatureDataUrl) {
+      var pdfDoc = await PDFLib.PDFDocument.load(PDF_BYTES);
+      var font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      var pages = pdfDoc.getPages();
+      var fields = CONFIG.fields;
+
+      function drawTextField(f, text) {
+        var page = pages[f.page];
+        var y = page.getHeight() - f.topAnchor + f.gap;
+        page.drawText(text, { x: f.x, y: y, size: f.size, font: font, color: PDFLib.rgb(0, 0, 0) });
+      }
+
+      async function drawSignatureField(f, dataUrl) {
+        var page = pages[f.page];
+        var pngImage = await pdfDoc.embedPng(dataUrl);
+        var widthFrac = f.widthFrac || 0.9;
+        var width = (f.x1 - f.x0) * widthFrac;
+        var height = f.height;
+        var x = f.x0 + (f.x1 - f.x0 - width) / 2;
+        var y = page.getHeight() - f.topAnchor + f.gap;
+        page.drawImage(pngImage, { x: x, y: y, width: width, height: height });
+      }
+
+      if (fields.fullName) { for (var i = 0; i < fields.fullName.length; i++) drawTextField(fields.fullName[i], fullName); }
+      if (fields.date) { for (var j = 0; j < fields.date.length; j++) drawTextField(fields.date[j], dateStr); }
+      if (fields.signature) { for (var k = 0; k < fields.signature.length; k++) await drawSignatureField(fields.signature[k], signatureDataUrl); }
+
+      return await pdfDoc.save();
+    }
+
+    function downloadBytes(bytes, filename) {
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
+    }
+
+    // ---- Submit ----
+    document.getElementById('submitBtn').onclick = async function() {
+      var fullName = document.getElementById('fullName').value.trim();
+      var status = document.getElementById('status');
+      status.style.color = '#b00020';
+      status.textContent = '';
+
+      var sigDataUrl = sigMode === 'draw' ? (hasSignature ? canvas.toDataURL('image/png') : null) : uploadedDataUrl;
+
+      if (!fullName) { status.textContent = 'Please enter your full name.'; return; }
+      if (!sigDataUrl) { status.textContent = sigMode === 'draw' ? 'Please draw your signature.' : 'Please upload a signature image.'; return; }
+
+      var btn = this;
+      btn.disabled = true;
+      status.style.color = '#555';
+      status.textContent = 'Preparing your signed document…';
+
+      var dateStr = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      try {
+        var signedBytes = await buildSignedPdf(fullName, dateStr, sigDataUrl);
+        var filename = CONFIG.formName + ' - ' + fullName + ' - ' + dateStr + '.pdf';
+        downloadBytes(signedBytes, filename);
+
+        status.textContent = '';
+        document.getElementById('thankyou').style.display = 'block';
+        btn.disabled = false;
+      } catch (err) {
+        status.style.color = '#b00020';
+        status.textContent = 'Something went wrong: ' + err.message;
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
