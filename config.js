@@ -103,4 +103,4 @@ const FORM_LIBRARY = {
 // your real HR contact / instructions.
 const AFTER_SIGNING_INSTRUCTIONS =
   'Upload this file to a Google Drive folder, then share that folder ' +
-  'with HR at <strong>PASTE_HR_EMAIL_HERE</strong>.';
+  'with HR at <strong>HR@ABBA.WORKS</strong>.';
